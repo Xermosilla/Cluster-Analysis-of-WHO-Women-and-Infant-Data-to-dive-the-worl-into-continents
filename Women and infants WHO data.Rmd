@@ -1,0 +1,668 @@
+---
+title: "Advanced modelling midterm project"
+author: "Raquel Sánchez-Hermosilla García"
+output: html_document
+---
+
+# Libraries 
+
+```{r message=FALSE, warning=FALSE}
+library(tidyverse)
+library(countrycode)
+library(rworldmap)
+library(GGally)
+library(rgho)
+library(mice)
+library(DataExplorer)
+library(zoo)
+library(factoextra)
+library(cluster)
+library(mclust)
+library(igraph)
+library(dendextend)
+```
+
+
+# Objective and questions 
+
+My objective is to analyze maternity and child health data from WHO, in order to provide valuable insights about the factors that influence maternal and child health outcomes in the world, in order to help identify potential areas for intervention and improvement. And as part of this objective, I have two main questions:
+
+  -What are the key factors that contribute to variations in maternal and child health outcomes across the world?
+
+  -In how many regions can we divide the world taking into account maternity and child health differences?
+
+
+# Variables pre-process
+
+```{r}
+WHO <-  get_gho_values(dimension = "COUNTRY") %>% dplyr::rename(Country=Title, COUNTRY=Code) %>% arrange(Country)
+```
+
+1. The indicator code for "Births attended by skilled health personnel (%)" on the World Health Organization (WHO) Global Health Observatory (GHO) website is "MDG_0000000025". 
+
+Variable name=midwife
+
+```{r}
+var <- get_gho_data("MDG_0000000025") %>%
+  mutate(midwife=NumericValue) %>% 
+  group_by(COUNTRY) %>%
+  filter(YEAR==max(YEAR,na.rm=T))%>%
+  slice(1)%>%
+  select(COUNTRY, midwife)
+
+WHO2 <- WHO%>% left_join(var, by="COUNTRY")
+```
+
+2.The indicator code for "Infant mortality rate (deaths per 1000 live births)" on the World Health Organization (WHO) Global Health Observatory (GHO) website is ""imr"".
+
+Variable name =inf_mort
+
+```{r}
+
+var <- get_gho_data("imr") %>%
+  mutate(inf_mort=NumericValue) %>% 
+  group_by(COUNTRY) %>%
+  filter(YEAR==max(YEAR,na.rm=T))%>%
+  slice(1)%>%
+  select(COUNTRY, inf_mort)
+
+WHO2 <- WHO2%>% left_join(var, by="COUNTRY")
+
+
+```
+
+3. The code for "Under-five mortality rate (deaths per 1000 live births)" in the World Health Organization (WHO) is "u5mr". 
+
+Variable name = under5_mort
+
+```{r}
+
+var <- get_gho_data("u5mr") %>%
+  mutate(under5_mort=NumericValue) %>% 
+  group_by(COUNTRY) %>%
+  filter(YEAR==max(YEAR,na.rm=T)) %>%
+  slice(1)%>%
+  select(COUNTRY, under5_mort)
+
+WHO2 <- WHO2%>% left_join(var, by="COUNTRY")
+
+```
+
+4. The code for "Mortality rate among children ages 5 to 9 years (per 1000 children aged 5)" in the World Health Organization (WHO) is "WHOSIS_000016" 
+
+Variable name = from5to9_mort
+
+```{r}
+
+var <- get_gho_data("WHOSIS_000016") %>%
+  mutate(from5to9_mort=NumericValue) %>% 
+  group_by(COUNTRY) %>%
+  filter(YEAR==max(YEAR,na.rm=T))%>%
+  slice(1)%>%
+  select(COUNTRY, from5to9_mort)
+
+WHO2 <- WHO2%>% left_join(var, by="COUNTRY")
+
+```
+
+5. The code for Mortality rate among children ages 10 to 14 years (per 1000 children aged 10) in the World Health Organization (WHO) is "CHILDMORT_MORTALITY_10TO14" 
+
+Variable name = from10to14_mort
+
+```{r}
+
+var <- get_gho_data("CHILDMORT_MORTALITY_10TO14") %>%
+  mutate(from10to14_mort=NumericValue) %>% 
+  group_by(COUNTRY) %>%
+  filter(YEAR==max(YEAR,na.rm=T))%>%
+  slice(1)%>%
+  select(COUNTRY, from10to14_mort)
+
+WHO2 <- WHO2%>% left_join(var, by="COUNTRY")
+```
+
+6. The code for stillbirth rate (per 1000 total births) in the World Health Organization (WHO) is "WHOSIS_000014"
+
+Variable name = stillbirth
+
+```{r}
+
+var <- get_gho_data("WHOSIS_000014") %>%
+  mutate(stillbirth=NumericValue) %>% 
+  group_by(COUNTRY) %>%
+  filter(YEAR==max(YEAR,na.rm=T))%>%
+  slice(1)%>%
+  select(COUNTRY, stillbirth)
+
+WHO2 <- WHO2%>% left_join(var, by="COUNTRY")
+
+
+```
+
+7. "Exclusive breastfeeding under 6 months (%)". The code for this indicator in the WHO is "NUTRITION_579"
+
+Variable name = breastfeed
+
+```{r}
+
+var <- get_gho_data("NUTRITION_579") %>%
+  mutate(breastfeed=NumericValue) %>% 
+  group_by(COUNTRY) %>%
+  filter(YEAR==max(YEAR,na.rm=T))%>%
+  slice(1)%>%
+  select(COUNTRY, breastfeed)
+
+WHO2 <- WHO2%>% left_join(var, by="COUNTRY")
+```
+
+8. "Low birth weight, prevalence (%)". The code for this indicator in the WHO is "LBW_PREVALENCE"
+
+Variable name = low_inf_wght
+
+```{r}
+
+var <- get_gho_data("LBW_PREVALENCE") %>%
+  mutate(low_inf_wght=NumericValue) %>% 
+  group_by(COUNTRY) %>%
+  filter(YEAR==max(YEAR,na.rm=T))%>%
+  slice(1)%>%
+  select(COUNTRY, low_inf_wght)
+
+WHO2 <- WHO2%>% left_join(var, by="COUNTRY")
+```
+
+9.Maternal mortality ratio (MMR) is a measure of the number of maternal deaths (deaths of women during pregnancy, childbirth or within 42 days of termination of pregnancy, irrespective of the duration and site of the pregnancy) per 100,000 live births in a given population.The code  is "MDG_0000000026"
+
+Variable name = mat_mort
+
+```{r}
+
+var <- get_gho_data("MDG_0000000026") %>%
+  mutate(mat_mort=NumericValue) %>% 
+  group_by(COUNTRY) %>%
+  filter(YEAR==max(YEAR,na.rm=T))%>%
+  slice(1)%>%
+  select(COUNTRY, mat_mort)
+
+WHO2 <- WHO2%>% left_join(var, by="COUNTRY")
+```
+
+10."Pneumoccocal conjugate vaccines (PCV3) immunization coverage among 1-year-olds (%)" The code for this indicator in the World Health Organization (WHO) is "PCV3"
+
+Variable name = vac_pneu
+
+```{r}
+
+var <- get_gho_data("PCV3") %>%
+  mutate(vac_pneu=NumericValue) %>% 
+  select(COUNTRY, vac_pneu, YEAR)%>%
+  group_by(COUNTRY) %>%
+  filter(YEAR==max(YEAR,na.rm=T))%>%
+  slice(1)%>%
+  select(-YEAR)
+
+WHO2 <- WHO2%>% merge(var, by="COUNTRY")
+
+```
+
+11. Life expectancy at birth is a statistical measure of the average number of years that a newborn is expected to live, based on current age-specific mortality rates in a given population.The code for this indicator in the World Health Organization (WHO) is "WHOSIS_000001"
+
+Variable name = life_expect
+
+```{r}
+
+var <- get_gho_data("WHOSIS_000001") %>%
+  mutate(life_expect=NumericValue) %>% 
+  group_by(COUNTRY) %>%
+  filter(YEAR==max(YEAR,na.rm=T))%>%
+  slice(1)%>%
+  select(COUNTRY, life_expect)
+
+WHO2 <- WHO2%>% left_join(var, by="COUNTRY")
+```
+
+12. The number of pregnant women (aged 15-49 years) with anemia (thousands) is an important indicator of the burden of anemia among pregnant women in a given population.The code for this indicator in the World Health Organization (WHO) is "NUTRITION_ANAEMIA_PREGNANT_NUM"
+
+Variable name = mat_anemia
+
+```{r}
+
+var <- get_gho_data("NUTRITION_ANAEMIA_PREGNANT_NUM") %>%
+  mutate(mat_anemia=NumericValue) %>% 
+  group_by(COUNTRY) %>%
+  filter(YEAR==max(YEAR,na.rm=T))%>%
+  slice(1)%>%
+  select(COUNTRY, mat_anemia)
+
+WHO2 <- WHO2%>% left_join(var, by="COUNTRY")
+```
+
+13. "Polio immunization coverage among one-year-olds (%)". The code  "poliov".
+
+Variable name = vac_polio
+
+```{r}
+
+var <- get_gho_data("WHS4_543") %>%
+  mutate(vac_polio=NumericValue) %>%
+  group_by(COUNTRY) %>%
+  filter(YEAR==max(YEAR,na.rm=T))%>%
+  slice(1)%>%
+  select(COUNTRY, vac_polio)
+
+WHO2 <- WHO2%>% left_join(var, by="COUNTRY")
+```
+
+14. The prevalence of thinness among children and adolescents, as measured by a body mass index (BMI) of less than -2 standard deviations below the median, is an important indicator of under nutrition in young people. The code for this indicator in the World Health Organization (WHO) is "NCD_BMI_MINUS2C"
+
+Variable name = thinness
+
+```{r}
+
+var <- get_gho_data("NCD_BMI_MINUS2C") %>%
+  mutate(thinness=NumericValue) %>% 
+  group_by(COUNTRY) %>%
+  filter(YEAR==max(YEAR,na.rm=T))%>%
+  slice(1)%>%
+  select(COUNTRY, thinness)
+
+WHO2 <- WHO2%>% left_join(var, by="COUNTRY")
+
+```
+
+15. "Antenatal care coverage - at least four visits" is an important component of maternal and child health care, providing opportunities for early detection and management of pregnancy-related complications and improving health outcomes for mothers and babies. The code for this indicator in the World Health Organization (WHO) is "anc4"
+
+Variable name = preg_health
+
+```{r}
+
+var <- get_gho_data("anc4") %>%
+  mutate(preg_health=NumericValue) %>% 
+  group_by(COUNTRY) %>%
+  filter(YEAR==max(YEAR,na.rm=T))%>%
+  slice(1)%>%
+  select(COUNTRY, preg_health)
+
+WHO2 <- WHO2%>% left_join(var, by="COUNTRY")
+```
+
+## NA´s
+
+```{r}
+#Percentage of NAS´s per column
+sapply(WHO2, function(x) sum(is.na(x))*100/nrow(WHO2))
+```
+
+There is a few issues with the amount of NA in certain variables, in five of them: inf_mort, preg_health, vac_polio, under5_mmort and breastfeed, the amount of NA´s is 40% or bigger. 
+
+Hence, I used multiple imputation method to avoid NA´s but it did not produce plausible results due to the fact that almost half of the countries do not have data and also, NA´s distribution follows a continent pattern, because as can be seen in the infant_mort example below, European countries have 94% of NA while only 15% of African countries have NA. 
+
+```{r}
+WHO2$Continent  <- countrycode(WHO2$COUNTRY, "iso3c", destination="continent")
+WHO2$Country <- countrycode(WHO2$COUNTRY, "iso3c", destination="country.name")
+WHO3 <- WHO2 %>% drop_na(Continent)
+
+#example with infant mortality
+
+data_count <- WHO3 %>%
+  group_by(Continent) %>%
+  summarize(n_paises = n_distinct(Country))
+
+data_na <- WHO3 %>%
+  group_by(Continent) %>%
+  summarize(na_count = sum(is.na(inf_mort)),
+            total_count = n())
+
+data_prop <- left_join(data_count, data_na, by = "Continent")
+
+data_prop$prop_na <- data_prop$na_count / data_prop$total_count
+
+data_prop 
+```
+
+Therefore, we can see that most data gathered from WHO, for the variable infant_mort, comes from the countries with worst indicators while countries with best indicators do not have data, and when automatic imputation is used all countries seem to have really bad indicators and that does not resemblance reality.
+
+Thus, I considered gathering historical data per continent to input each of the five variables mean for each continent, but for most of the variables I could not find data. 
+
+Hence, in the case of the five variables that have 40% or more NA´s, I decided to replace NA´S with the mean of each variable, besides this decision introduces bias because it assumes NA´S are randomly distributed when they are not.
+
+```{r}
+WHO3$inf_mort <- na.aggregate(WHO3$inf_mort)
+WHO3$preg_health <- na.aggregate(WHO3$preg_health)
+WHO3$vac_polio <- na.aggregate(WHO3$vac_polio)
+WHO3$under5_mort <- na.aggregate(WHO3$under5_mort)
+WHO3$breastfeed <- na.aggregate(WHO3$breastfeed)
+```
+
+However, automatic imputation of NA´s is used for the rest of the variables 
+
+```{r message=FALSE, warning=FALSE}
+#Automatic imputation of NAs
+m <- 4 
+
+mice_mod <- mice(WHO3, m=m, method='rf')
+
+WHO3 <- complete(mice_mod, action=m)
+
+sapply(WHO3, function(x) sum(is.na(x))*100/nrow(WHO3))
+```
+
+## Descriptive analysis
+
+```{r message=FALSE}
+create_report(WHO3)
+```
+
+### Map of infant mortality
+
+```{r message=FALSE, warning=FALSE}
+
+# select your favorite variable here:
+map <- WHO3 %>% dplyr::select(Country, inf_mort)
+
+#Convert the country code into iso3c using the function countrycode()
+map$country = countrycode(map$Country, 'country.name', 'iso3c')
+
+#Create data object supporting the map
+matched <- joinCountryData2Map(map, joinCode = "ISO3",
+                               nameJoinColumn = "country")
+#Draw the map
+mapCountryData(matched,nameColumnToPlot="inf_mort",missingCountryCol = "white",
+               borderCol = "#C7D9FF",
+               catMethod = "pretty", colourPalette = "heat",
+               mapTitle = c("Infant Mortality by Country"), lwd=1)
+```
+
+### Map of life expectancy at birth
+
+```{r message=FALSE, warning=FALSE}
+
+# select your favorite variable here:
+map <- WHO3 %>% dplyr::select(Country, life_expect)
+
+#Convert the country code into iso3c using the function countrycode()
+map$country = countrycode(map$Country, 'country.name', 'iso3c')
+
+#Create data object supporting the map
+matched <- joinCountryData2Map(map, joinCode = "ISO3",
+                               nameJoinColumn = "country")
+#Draw the map
+mapCountryData(matched,nameColumnToPlot="life_expect",missingCountryCol = "white",
+               borderCol = "#C7D9FF",
+               catMethod = "pretty", colourPalette = "heat",
+               mapTitle = c("Life expectancy at birth by Country"), lwd=1)
+```
+
+The first map shows the bias in variables like infant mortality (inf_mort) that had more than 40% of NA´S, due to using the mean value of the variable to substitute them, because we can see that European countries have the mean color when they should probably have a lower value. 
+
+And the second graph shows that automatic imputation of NA´s for variables that had less than 40% worked, because the world distribution of the variable life expectancy (life_expect) resembles reality.
+
+# PCA analysis 
+
+```{r}
+WHO4 <- WHO3%>% select(-c(Country, COUNTRY, Continent))
+
+prcomp(WHO4)
+
+pca <- prcomp(WHO4, scale=  TRUE)
+```
+
+## Visualize results of PCA analysis
+
+```{r echo=TRUE}
+fviz_screeplot(pca, addlabels = TRUE)
+```
+
+In the plot we can see that the first component explains 44,2% of the variability in the data and the second component explains  11.4%, therefore with the first and second component 50% of the data variability can be explained.
+
+## First component
+
+The barplot shows load values, positive or negative, for each variable. A high loading value, either positive or negative, indicates that the variable has a strong influence on the first principal component, hence, the most important indicators according to the first principal component are: midwife,from5to9_mort,
+from10to14_mort, stillbirth, mat_mort and life_expect
+
+Also, positive loadings indicate that the variable is positively correlated with the first principal component and negative loadings indicate that the variable is negatively correlated with the first principal component. That is why indicators of good maternity and child health are positive (midwife and life_expect) while indicators of bad maternity and child health are negative (mat_mort, from5to9_mort, from10to14_mort, stillbirth)
+
+```{r echo=TRUE}
+barplot(pca$rotation[,1], las=2, col="blue")
+fviz_contrib(pca, choice = "var", axes = 1)
+```
+
+
+## Second component
+
+This component explains 11.4% of the differences in maternity and child health in the world while the first explained 44,2%, which means that together, this components explain more than 50% of variability in the data therefore I wont use more component for the analysis.
+
+```{r echo=FALSE}
+barplot(pca$rotation[,2], las=2, col="blue")
+fviz_contrib(pca, choice = "var", axes = 2)
+```
+
+And the most important indicators to explain data variability according to the second principal component are: inf_mort and under5_mort
+
+Ranking the countries:
+
+```{r}
+countries<-WHO3$Country
+continent <- WHO3$Continent
+
+
+countries[order(pca$x[,1])][1:10]#top ten worst according to first component
+countries[order(pca$x[,2])][1:10]#top ten worst according to second component
+```
+For the first component the ten countries with worst indicators for maternity and child health are mostly African countries which is plausible according to data and reality. However, for the second component there are countries from Africa, but also European countries, like Norway or Sweden, which in reality are not among the worst ten countries according to infant and maternity health. Therefore, this shows the bias introduced when using the mean to replace NA´s.
+
+## Ploting the first two scores
+
+```{r}
+data.frame(z1=pca$x[,1],z2=pca$x[,2]) %>% 
+  ggplot(aes(z1,z2, label=countries,color=continent)) + geom_point(size=0) +
+  labs(title="First two principal components (scores)", x="PC1", y="PC2") +   guides(color=guide_legend(title="HDI"))+
+  theme_bw() +theme(legend.position="bottom") + geom_text(size=3, hjust=0.6, vjust=0, check_overlap = TRUE) 
+
+```
+
+Country names are elongated across the graph which shows that the two first component are independent, and explain different parts of the data variability.
+
+The conclusions that can be gathered from Principal Component Analysis,using first and second component that explain more than 50% of data variability, allows to identify the key factors that contribute to maternal and child health outcomes.
+With the two principal components we can explain more than 50% of variability in the data and the key variables are: infant mortality, infant mortality under 5, infant mortality from 5 to 9, infant mortality from 10 to 14, mother mortality life expectancy, births attended by skilled health personnel and stillbirth.
+
+This is interesting due to the fact that most of the key variables are mortality of children and mothers, which are correlated with the variable life expectancy but also with the variable midwife or births attended by skilled health personnel, therefore a possible solution to work on, in order to improve maternity and children health would be to increment the number of midwifes in the countries with worst indicators.
+
+# Clustering analysis
+
+The initial guess for the number of clusters, regions in which the world could 
+be divided according to maternity and child health is 5, as the number of continents.  
+  
+```{r}
+k<-5
+
+cluster.model <-  kmeans(scale(WHO4), centers = k, nstart = 100000)#data is scaled because the variables used are measured in different units
+```
+
+## Number of countries by cluster
+
+```{r}
+#To compare continents
+groups<-cluster.model$cluster
+
+barplot(table(groups), col="blue")#displays the number of countries by continent
+```
+
+## Distribution of variables within the clusters
+
+```{r}
+#To compare the variables within each continent
+centers<-cluster.model$centers
+
+barplot(centers[1,], las=2, col="blue")#
+barplot(centers[2,], las=2, col="blue")
+barplot(centers[3,], las=2, col="blue")
+barplot(centers[4,], las=2, col="blue")
+barplot(centers[5,], las=2, col="blue")
+```
+
+The clustering algorithm has grouped countries based on their variables similarities in five clusters or "continents", and those five graphs show how each variable is above or below average for each of the continents created, therefore we can see how each variable differs for each of the the five clusters created.
+
+It can be observed that cluster one and two have bad maternity and child health indicators, the second cluster has too few countries and clusters four and five have good and pretty similar indicators, therefore it might be better to group in four clusters rather than five.
+
+```{r message=FALSE, warning=FALSE}
+fviz_cluster(cluster.model, data = WHO4, geom = c("point"),ellipse.type = 'norm', pointsize=1)+
+  theme_minimal()+geom_text(label=countries,hjust=0, vjust=0,size=2,check_overlap = F)+scale_fill_brewer(palette="Paired")
+```
+
+As explained above and as the graph shows, it would be better to group in four countries rather than five, because the above graph shows four ellipses instead of five
+
+```{r}
+k<-4
+
+cluster.model2= kmeans(scale(WHO4), centers = k, nstart = 100000)
+
+groups2<-cluster.model2$cluster
+barplot(table(groups2), col="blue")
+
+barplot(centers[1,], las=2, col="blue")
+barplot(centers[2,], las=2, col="blue")
+barplot(centers[3,], las=2, col="blue")
+barplot(centers[4,], las=2, col="blue")
+
+```
+
+Now we can observe that cluster one and three have bad and similar maternity and child health indicators, the second cluster has too few countries again and cluster four has too many countries, therefore it might be better to group in three continents rather than four.
+
+```{r message=FALSE, warning=FALSE}
+fviz_cluster(cluster.model2, data = WHO4, geom = c("point"),ellipse.type = 'norm', pointsize=1)+
+  theme_minimal()+geom_text(label=countries,hjust=0, vjust=0,size=2,check_overlap = F)+scale_fill_brewer(palette="Paired")
+```
+
+As stated above and as the graph shows, it would be better to group in three countries rather than four, because the above graph shows three ellipses instead of four.
+
+```{r}
+k<-3
+
+cluster.model3= kmeans(scale(WHO4), centers = k, nstart = 100000)
+groups3<-cluster.model3$cluster
+
+barplot(table(groups3), col="blue")
+
+
+barplot(centers[1,], las=2, col="blue")
+barplot(centers[2,], las=2, col="blue")
+barplot(centers[3,], las=2, col="blue")
+
+
+```
+
+
+```{r}
+fviz_cluster(cluster.model3, data = WHO4, geom = c("point"),ellipse.type = 'norm', pointsize=1)+
+  theme_minimal()+geom_text(label=countries,hjust=0, vjust=0,size=2,check_overlap = F)+scale_fill_brewer(palette="Paired")
+```
+
+So as to confirm that three is the optimal clusters value, and to gain more insight about the optimal number of clusters I am going to use three different methods:  
+
+```{r}
+fviz_nbclust(scale(WHO4), kmeans, method = 'wss', k.max = 10, nstart = 1000)
+
+fviz_nbclust(scale(WHO4), kmeans, method = 'silhouette', k.max = 10, nstart = 1000)
+
+fviz_nbclust(scale(WHO4), kmeans, method = 'gap_stat', k.max = 10, nstart = 100, nboot = 500)
+```
+
+WSS and Silhouette methods show that the optimal number of clusters is two but, that is too little to divide the world in different maternity and child health regions. And as previous analysis and Gap_stat method show, the optimal number is three groups, thus,I am going to continue the analysis with three clusters.
+
+## The three clusters of world regions mapped
+
+```{r message=FALSE, warning=FALSE}
+# Select here your favorite clustering tool
+map  <-  data.frame(country=countries, value=cluster.model3$cluster)
+#map = data.frame(country=names, value=fit.kmeans$cluster)
+
+#Convert the country code into iso3c using the function countrycode()
+map$country = countrycode(map$country, 'country.name', 'iso3c')
+#Create data object supporting the map
+matched <- joinCountryData2Map(map, joinCode = "ISO3",
+                               nameJoinColumn = "country")
+#Draw the map
+mapCountryData(matched,nameColumnToPlot="value",missingCountryCol = "white",
+               borderCol = "#C7D9FF",
+               catMethod = "pretty", colourPalette = "rainbow",
+               mapTitle = c("Three world regions according to maternity and child health"), lwd=1)
+```
+
+The above graph shows the three different regions in which the world could be divided according to maternity and child health indicators provided by WHO. 
+
+## Hierarchical clustering
+
+```{r}
+
+d<-dist(scale(WHO4), method="euclidean")
+
+hc <- hclust(d, method="ward.D2")
+
+```
+
+## Phylogenic tree visualization
+
+```{r}
+fviz_dend(x = hc,
+          k = 3,
+          color_labels_by_k = TRUE,
+          cex = 0.8,
+          type = "phylogenic",
+          repel = TRUE)+ 
+  labs(title="Maternity & infant global data health: tree clustering") + theme(axis.text.x=element_blank(),axis.text.y=element_blank())
+```
+
+## Phylogenic tree visualization with country names
+
+```{r}
+#Get countries names
+country_names <- WHO3$Country
+
+#Transform actual dendogram to a dendogram with country labels
+hc_with_labels <- as.dendrogram(hc)
+labels(hc_with_labels) <- country_names
+
+fviz_dend(x = hc_with_labels,
+          k = 3,
+          color_labels_by_k = TRUE,
+          cex = 0.8,
+          type = "phylogenic",
+          repel = TRUE) + 
+  labs(title = "Maternity & infant global data health: tree clustering") + 
+  theme(axis.text.x = element_blank(), axis.text.y = element_blank())
+```
+
+## The three clusters of world regions mapped
+
+```{r message=FALSE, warning=FALSE}
+groups.hc = cutree(hc, k = 3)
+
+# Map our PCA index in a map:
+map = data.frame(country=countries, value=groups.hc)
+#Convert the country code into iso3c using the function countrycode()
+map$country = countrycode(map$country, 'country.name', 'iso3c')
+#Create data object supporting the map
+matched <- joinCountryData2Map(map, joinCode = "ISO3",
+                               nameJoinColumn = "country")
+#Draw the map
+mapCountryData(matched,nameColumnToPlot="value",missingCountryCol = "white",
+               borderCol = "#C7D9FF",
+               catMethod = "pretty", colourPalette = "rainbow",
+               mapTitle = c("Three world regions according to maternity and 
+                            child health"), lwd=1)
+
+```
+
+The above map graph shows the three different regions in which the world could be divided according to maternity and child health indicators provided by WHO, using hierarchical algorithm.
+
+And the conclusion that can be gathered from clustering is that the world can be divided in three different regions according to maternity and child health from WHO, and that both algorithms performed similar outputs regarding the distribution of countries which belong to the same clusters.
+
+# Conclusions
+
+On one hand, Principal Component Analysis shows that the key factors which contribute to maternal and child health outcomes globaly are: infant mortality, infant mortality under 5, infant mortality from 5 to 9, infant mortality from 10 to 14, mother mortality, life expectancy, births attended by skilled health personnel and stillbirth. Which shows that it would be interesting to increment the number of midwifes in countries with worst indicators, in order to improve maternity and child health.
+
+On the other hand, clustering shows that the world can be divided in three different regions according to maternity and child health from WHO.
+
+However it is important to take into account the bias introduced when using the variable mean to substitute NA´s inside the variables with more than 40% of NA´s. 
+
